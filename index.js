@@ -33,7 +33,11 @@ function verifyShopify(req, res, buf) {
     const hmac = req.get('X-Shopify-Hmac-Sha256')
     const digest = crypto.createHmac('sha256', process.env.SHOPIFY_WEBHOOK_SECRET)
                 .update(buf).digest('base64')
-    if (digest !== hmac) throw new Error('Invalid HMAC')
+    
+    
+            console.log('-> SHOPIFY HEADER:', hmac)
+            console.log('-> COMPUTED HMAC:', digest)
+            if (digest !== hmac) throw new Error('Invalid HMAC')
 }
 
 // - Webhook endpoint
