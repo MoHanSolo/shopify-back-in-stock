@@ -56,14 +56,14 @@ function verifyShopify(req, res, buf) {
 // - Webhook endpoint
  app.post(
    '/webhook',
-  bodyParser.raw({ type: 'application/json',  verify: verifyShopify  }),
+  bodyParser.raw({ type: 'application/json',  /* verify: verifyShopify  */}),
   async (req, res) => {
     console.log('📬 Received webhook headers:', req.headers);
     console.log('📬 Raw body:', req.body.toString());
 
     // buffer → string → JSON
     const data = JSON.parse(req.body.toString());
-    const { id: inventory_item_id, available } = data;
+    const { inventory_item_id, available } = data;
 
         if (inventory_quantity > 0) {
             const subs = await subsColl.find({ variantId: inventory_item_id.toString() }).toArray();
@@ -97,7 +97,7 @@ function verifyShopify(req, res, buf) {
                         `
                     })
                 ));
-                await subsColl.deleteMany({ variantId: inventory_item_id.toString() })
+                await subsColl.insertOne({ email, productId, variantId, inventoryItemId: inventoryItemId });
             }
         }
         res.sendStatus(200)
