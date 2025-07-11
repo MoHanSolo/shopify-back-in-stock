@@ -2,9 +2,9 @@ require('dotenv').config();
 const express       = require('express');
 const bodyParser    = require('body-parser');
 const cors          = require('cors');
+const crypto        = require('crypto');
 const { MongoClient } = require('mongodb');
 const nodemailer    = require('nodemailer');
-const crypto        = require('crypto');
 
 const app = express();
 let subsColl;
@@ -25,17 +25,21 @@ app.use(cors({
   allowedHeaders: ['Content-Type']
 }));
 
-// — Subscribe endpoint (no more inventoryItemId) —
+// — Subscribe endpoint —
 app.post('/subscribe', bodyParser.json(), async (req, res) => {
-  const { email, productId } = req.body;
-  if (!email || !productId) {
-    return res.status(400).send('Missing email or productId');
+  const { email, productId, variantId } = req.body;
+  if (!email || !productId || !variantId) {
+    return res.status(400).send('Missing email, productId or variantId');
   }
-  await subsColl.insertOne({ email, productId });
+  await subsColl.insertOne({
+    email,
+    productId:  productId.toString(),
+    variantId:  variantId.toString()
+  });
   res.send('OK');
 });
 
-// — Verify Shopify webhook HMAC —
+// — Shopify webhook HMAC verification —
 function verifyShopify(req, res, buf) {
   const hmac   = req.get('X-Shopify-Hmac-Sha256');
   const digest = crypto
@@ -43,26 +47,26 @@ function verifyShopify(req, res, buf) {
     .update(buf)
     .digest('base64');
   if (digest !== hmac) {
-    console.error('!! Invalid HMAC');
+    console.error('❌ Invalid HMAC, rejecting webhook');
     return res.sendStatus(403);
   }
 }
 
-// — Inventory-level-update webhook —
+// — Variant Update webhook handler —
 app.post(
   '/webhook',
   bodyParser.raw({ type: 'application/json', verify: verifyShopify }),
   async (req, res) => {
     const data = JSON.parse(req.body.toString());
-    const { inventory_item_id, available } = data;
-    console.log('↪️ webhook payload:', data);
+    const { id: variantId, product_id: productId, inventory_quantity } = data;
+    console.log('↪️ Variant Update payload:', data);
 
-    if (available > 0) {
-      // send to **all** subscribers of **that productId**
-      // (since we only store productId now)
-      // NOTE: You'll need to map inventory_item_id → productId if you want per-product filtering.
-      const subs = await subsColl.find({}).toArray();
-      console.log(`→ found ${subs.length} subscriber(s)`);
+    // When stock returns above zero
+    if (inventory_quantity > 0) {
+      const subs = await subsColl.find({
+        productId: productId.toString(),
+        variantId: variantId.toString()
+      }).toArray();
 
       if (subs.length) {
         const transporter = nodemailer.createTransport({
@@ -75,23 +79,27 @@ app.post(
           }
         });
 
+        // send emails in parallel
         await Promise.all(subs.map(s =>
           transporter.sendMail({
             from:    process.env.SMTP_USER,
             to:      s.email,
             subject: `✅ Back in Stock!`,
             html: `
-              <p>Good news — your requested item is back in stock!</p>
+              <p>Good news — the variant you asked about is back in stock!</p>
               <p>
-                <a href="https://${process.env.SHOPIFY_SHOP_DOMAIN}/products/${s.productId}">
+                <a href="https://${process.env.SHOPIFY_SHOP_DOMAIN}/products/${s.productId}?variant=${s.variantId}">
                   Click here to buy now
                 </a>
               </p>`
           })
         ));
 
-        // clear the entire waitlist
-        await subsColl.deleteMany({});
+        // remove only those subscribers for this product+variant
+        await subsColl.deleteMany({
+          productId: productId.toString(),
+          variantId: variantId.toString()
+        });
       }
     }
 
@@ -101,4 +109,5 @@ app.post(
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Listening on ${PORT}`));
+
 
