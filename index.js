@@ -60,14 +60,11 @@ function verifyShopify(req, res, buf) {
   async (req, res) => {
     // buffer → string → JSON
     const data = JSON.parse(req.body.toString());
-    const { inventory_item_id, available } = data;
-    // …
+    const { id: variantId, available } = data;
 
         if (available > 0) {
             // fetch waiting subscribers
-            const subs = await subsColl
-                .find({ inventoryItemId: inventory_item_id })
-                .toArray()
+            const subs = await subsColl.find({ variantId: variantId.toString() }).toArray();
             if (subs.length) {
                 // setup mailer
                 const transporter = nodemailer.createTransport({
@@ -98,7 +95,7 @@ function verifyShopify(req, res, buf) {
                         `
                     })
                 ));
-                await subsColl.deleteMany({ inventoryItemId: inventory_item_id })
+                await subsColl.deleteMany({ variantId: variantId.toString() })
             }
         }
         res.sendStatus(200)
