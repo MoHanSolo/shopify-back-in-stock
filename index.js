@@ -63,43 +63,51 @@ function verifyShopify(req, res, buf) {
 
     // buffer → string → JSON
     const data = JSON.parse(req.body.toString());
-    const { inventory_item_id, available } = data;
+      const { inventory_item_id, available } = data;
+  console.log(`→ webhook payload: item ${inventory_item_id} now available=${available}`);
 
-        if (inventory_quantity > 0) {
-            const subs = await subsColl.find({ variantId: inventory_item_id.toString() }).toArray();
-            if (subs.length) {
-                // setup mailer
-                const transporter = nodemailer.createTransport({
-                    host: process.env.SMTP_HOST,
-                    port: Number(process.env.SMTP_PORT),
-                    secure: process.env.SMTP_PORT==465,
-                    auth: {
-                        user: process.env.SMTP_USER,
-                        pass: process.env.SMTP_PASS
-                    }
-                })
+  if (available > 0) {
+    // pull subscribers who registered for this exact inventory_item_id
+    const subs = await subsColl.find({
+      inventoryItemId: inventory_item_id.toString()
+    }).toArray();
 
-                // send and clear
-                await Promise.all(subs.map(s =>
-                    transporter.sendMail({
-                        from: process.env.SMTP_USER,
-                        to: s.email,
-                        subject: `✅ Back in Stock!`,
-                        html: `
-                        <div>
-                            <p>Good news! The product you asked for is back in stock.</p>
-                            <p>
-                            <a href="https://${process.env.SHOPIFY_SHOP_DOMAIN}/products/${s.productId}?variant=${s.variantId}">
-                                Click here to shop now
-                            </a>
-                            </p>
-                        </div>
-                        `
-                    })
-                ));
-                await subsColl.insertOne({ email, productId, variantId, inventoryItemId: inventoryItemId });
-            }
+    console.log(`→ found ${subs.length} subscriber(s) for ${inventory_item_id}`);
+
+    if (subs.length) {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT),
+        secure: process.env.SMTP_PORT == '465',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
         }
+      });
+
+      await Promise.all(subs.map(s =>
+        transporter.sendMail({
+          from:    process.env.SMTP_USER,
+          to:      s.email,
+          subject: '✅ Back in Stock!',
+          html: `
+            <p>Good news — the item you wanted is back in stock!</p>
+            <p><a href="https://${process.env.SHOPIFY_SHOP_DOMAIN}/products/${s.productId}?variant=${s.variantId}">
+              Click here to buy it now
+            </a></p>
+          `
+        })
+      ));
+
+      // then clear out those subscribers
+      await subsColl.deleteMany({
+        inventoryItemId: inventory_item_id.toString()
+      });
+
+      console.log('→ emails sent & subscribers cleared');
+    }
+  }
+
         res.sendStatus(200)
     }
 )
