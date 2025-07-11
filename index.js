@@ -60,10 +60,9 @@ function verifyShopify(req, res, buf) {
   async (req, res) => {
     // buffer → string → JSON
     const data = JSON.parse(req.body.toString());
-    const { id: variantId, available } = data;
+    const { id: variantId, inventory_quantity } = data;
 
-        if (available > 0) {
-            // fetch waiting subscribers
+        if (inventory_quantity > 0) {
             const subs = await subsColl.find({ variantId: variantId.toString() }).toArray();
             if (subs.length) {
                 // setup mailer
