@@ -4,12 +4,20 @@ console.log('SMTP_PASS →', process.env.SMTP_PASS ? '*** loaded ***' : process.
 console.log('→ MONGODB_URI:', process.env.MONGODB_URI);
 const express = require('express')
 const bodyParser = require('body-parser')
+const cors = require('cors')
 const crypto = require('crypto')
 const { MongoClient } = require('mongodb')
 const nodemailer = require('nodemailer') 
 
 const app = express()
 let subsColl;
+
+// allow all origins (or lock it down to your shop domain)
+app.use(cors({
+  origin: '*',
+  methods: ['POST','OPTIONS'],
+  allowedHeaders: ['Content-Type']
+}))
 
 // - Connect to MongoDB Atlas
 MongoClient.connect(process.env.MONGODB_URI, { useUnifiedTopology: true })
