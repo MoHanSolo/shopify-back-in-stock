@@ -56,7 +56,7 @@ function verifyShopify(req, res, buf) {
 // - Webhook endpoint
  app.post(
    '/webhook',
-  bodyParser.raw({ type: 'application/json', verify: verifyShopify }),
+  bodyParser.raw({ type: 'application/json', /* verify: verifyShopify */ }),
   async (req, res) => {
     console.log('📬 Received webhook headers:', req.headers);
     console.log('📬 Raw body:', req.body.toString());
