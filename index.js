@@ -9,7 +9,7 @@ const nodemailer    = require('nodemailer');
 const app = express();
 let subsColl;
 
-// — Connect to MongoDB ———————————————————————————————
+// — Connect to MongoDB —
 MongoClient
   .connect(process.env.MONGODB_URI, { useUnifiedTopology: true })
   .then(client => {
@@ -18,14 +18,14 @@ MongoClient
   })
   .catch(console.error);
 
-// — CORS for your Shopify store ——————————————————————
+// — CORS so your store can POST to /subscribe —
 app.use(cors({
   origin: '*',
   methods: ['POST','OPTIONS'],
   allowedHeaders: ['Content-Type']
 }));
 
-// — Subscribe endpoint ————————————————————————————
+// — Subscribe endpoint —
 app.post('/subscribe', bodyParser.json(), async (req, res) => {
   const { email, productId, variantId, inventoryItemId } = req.body;
   if (!email || !variantId || !inventoryItemId) {
@@ -35,10 +35,10 @@ app.post('/subscribe', bodyParser.json(), async (req, res) => {
   res.send('OK');
 });
 
-// — Shopify webhook HMAC verification ——————————————————
+// — Shopify webhook HMAC verify —
 function verifyShopify(req, res, buf) {
-  const hmac     = req.get('X-Shopify-Hmac-Sha256');
-  const digest   = crypto
+  const hmac   = req.get('X-Shopify-Hmac-Sha256');
+  const digest = crypto
     .createHmac('sha256', process.env.SHOPIFY_WEBHOOK_SECRET)
     .update(buf)
     .digest('base64');
@@ -46,7 +46,7 @@ function verifyShopify(req, res, buf) {
   if (digest !== hmac) throw new Error('Invalid HMAC');
 }
 
-// — Inventory-level update webhook ——————————————————————
+// — Inventory-level update webhook handler —
 app.post(
   '/webhook',
   bodyParser.raw({ type: 'application/json', verify: verifyShopify }),
@@ -55,14 +55,13 @@ app.post(
     const { inventory_item_id, available } = data;
     console.log('↪️ webhook payload:', data);
 
-    // Only fire when stock goes above 0
     if (available > 0) {
       const subs = await subsColl
         .find({ inventoryItemId: inventory_item_id.toString() })
         .toArray();
 
       if (subs.length) {
-        // Configure mail transport
+        // set up mailer
         const transporter = nodemailer.createTransport({
           host:   process.env.SMTP_HOST,
           port:   Number(process.env.SMTP_PORT),
@@ -73,14 +72,14 @@ app.post(
           }
         });
 
-        // Send everyone their back-in-stock alert
+        // send everyone their notification
         await Promise.all(subs.map(s =>
           transporter.sendMail({
             from:    process.env.SMTP_USER,
             to:      s.email,
             subject: `✅ Back in Stock!`,
             html: `
-              <p>Good news — your requested item is back in stock!</p>
+              <p>Good news — the item you asked for is back in stock!</p>
               <p>
                 <a href="https://${process.env.SHOPIFY_SHOP_DOMAIN}/products/${s.productId}?variant=${s.variantId}">
                   Click here to buy now
@@ -89,7 +88,7 @@ app.post(
           })
         ));
 
-        // Remove them from the waitlist
+        // remove them from the queue
         await subsColl.deleteMany(
           { inventoryItemId: inventory_item_id.toString() }
         );
@@ -102,5 +101,3 @@ app.post(
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Listening on ${PORT}`));
-
-
