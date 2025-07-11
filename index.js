@@ -6,19 +6,10 @@ const crypto        = require('crypto');
 const { MongoClient } = require('mongodb');
 const nodemailer    = require('nodemailer');
 
-//
-// ——— Polyfill fetch only if missing —————————————————————————————
-//
-let fetchFn = global.fetch;
-if (!fetchFn) {
-  // on older Node versions (e.g. 16) we need node-fetch
-  fetchFn = require('node-fetch');
-}
-
 const app = express();
 let subsColl;
 
-// — Connect to MongoDB —————————————————————————————————————
+// — Connect to MongoDB —
 MongoClient
   .connect(process.env.MONGODB_URI, { useUnifiedTopology: true })
   .then(client => {
@@ -27,24 +18,25 @@ MongoClient
   })
   .catch(console.error);
 
-// — CORS — allow your shop to call /subscribe —————————————————————————
+// — CORS — allow the storefront to hit /subscribe —
 app.use(cors({
   origin: '*',
   methods: ['POST','OPTIONS'],
   allowedHeaders: ['Content-Type']
 }));
 
-// — Subscribe endpoint ——————————————————————————————————————
+// — Subscribe endpoint — saves inventoryItemId too —
 app.post('/subscribe', bodyParser.json(), async (req, res) => {
   const { email, productId, variantId, inventoryItemId } = req.body;
   if (!email || !variantId || !inventoryItemId) {
     return res.status(400).send('Missing data');
   }
+
   await subsColl.insertOne({ email, productId, variantId, inventoryItemId });
   res.send('OK');
 });
 
-// — Shopify webhook HMAC verification ——————————————————————————————
+// — Shopify webhook HMAC verification —
 function verifyShopify(req, res, buf) {
   const hmac   = req.get('X-Shopify-Hmac-Sha256');
   const digest = crypto
@@ -54,21 +46,25 @@ function verifyShopify(req, res, buf) {
   if (digest !== hmac) throw new Error('Invalid HMAC');
 }
 
-// — Inventory-level-update webhook handler ——————————————————————————————
+// — Inventory-level-update webhook handler —
 app.post(
   '/webhook',
   bodyParser.raw({ type: 'application/json', verify: verifyShopify }),
   async (req, res) => {
     const data = JSON.parse(req.body.toString());
     const { inventory_item_id, available } = data;
+
     console.log('↪️ webhook payload:', data);
 
+    // Only fire when stock becomes >0
     if (available > 0) {
+      // find everybody who signed up for this inventory_item_id
       const subs = await subsColl
         .find({ inventoryItemId: inventory_item_id.toString() })
         .toArray();
 
       if (subs.length) {
+        // configure your SMTP transport
         const transporter = nodemailer.createTransport({
           host:   process.env.SMTP_HOST,
           port:   Number(process.env.SMTP_PORT),
@@ -79,6 +75,7 @@ app.post(
           }
         });
 
+        // send each one an email
         await Promise.all(subs.map(s =>
           transporter.sendMail({
             from:    process.env.SMTP_USER,
@@ -94,7 +91,7 @@ app.post(
           })
         ));
 
-        // remove them from the waitlist
+        // clear all those waiting entries
         await subsColl.deleteMany(
           { inventoryItemId: inventory_item_id.toString() }
         );
@@ -107,6 +104,3 @@ app.post(
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Listening on ${PORT}`));
-
-
-
