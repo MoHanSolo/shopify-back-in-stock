@@ -58,6 +58,9 @@ function verifyShopify(req, res, buf) {
    '/webhook',
   bodyParser.raw({ type: 'application/json', verify: verifyShopify }),
   async (req, res) => {
+    console.log('📬 Received webhook headers:', req.headers);
+    console.log('📬 Raw body:', req.body.toString());
+
     // buffer → string → JSON
     const data = JSON.parse(req.body.toString());
     const { id: variantId, inventory_quantity } = data;
