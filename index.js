@@ -30,11 +30,29 @@ MongoClient.connect(process.env.MONGODB_URI, { useUnifiedTopology: true })
 // - Subscribe endpoint
 
 app.post('/subscribe', bodyParser.json(), async (req, res) => {
-    const {email, productId, variantId, inventoryItemId } = req.body
-    if (!email || !inventoryItemId) return res.status(400).send('Missing data')
-    await subsColl.insertOne({ email, productId, variantId, inventoryItemId })
-    res.send('OK')
-})
+  const { email, productId, variantId, inventoryItemId } = req.body;
+
+  // Add this logging immediately
+  console.log('Received subscribe request:', req.body);
+
+  if (!email || !inventoryItemId) {
+    const missingFields = [];
+    if (!email) missingFields.push('email');
+    if (!inventoryItemId) missingFields.push('inventoryItemId');
+
+    const errMsg = `Missing required fields: ${missingFields.join(', ')} - Full request: ${JSON.stringify(req.body)}`;
+    console.error(errMsg);
+    return res.status(400).json({ message: errMsg });
+  }
+
+  try {
+    await subsColl.insertOne({ email, productId, variantId, inventoryItemId });
+    res.send('OK');
+  } catch (dbError) {
+    console.error('DB insert error:', dbError);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
 
 // - Shopify webhook verification
 function verifyShopify(req, res, buf) {
